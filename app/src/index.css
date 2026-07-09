@@ -17,7 +17,12 @@
   --color-critical: #dc2626;
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --color-bg: #0f0f12;
   --color-surface: #17171b;
   --color-border: #27272c;
@@ -32,6 +37,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --color-bg: #0f0f12;
     --color-surface: #17171b;
     --color-border: #27272c;
@@ -60,11 +66,21 @@ body {
   min-height: 100svh;
 }
 
-.input {
+.input,
+select,
+input,
+textarea {
   border: 1px solid var(--color-border);
-  background: transparent;
+  background: var(--color-surface);
   border-radius: 0.375rem;
   padding: 0.375rem 0.5rem;
   font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+/* color-scheme handles the native popup on most browsers, but this is a
+   belt-and-braces fallback for engines that ignore it for <option>. */
+option {
+  background: var(--color-surface);
   color: var(--color-text);
 }
