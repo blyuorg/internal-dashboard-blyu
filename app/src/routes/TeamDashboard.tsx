@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { MyHoursChart } from "@/components/timer/MyHoursChart";
 import { syncTaskToCalendar } from "@/lib/calendarSync";
 import type { TaskStatus } from "@/lib/database.types";
 
@@ -153,6 +154,8 @@ export default function TeamDashboard() {
           <LeadForm projects={projectsQuery.data ?? []} onLog={(id) => logLead.mutate(id)} />
         </div>
       </section>
+
+      <MyHoursChart />
 
       <ProjectChat tasks={tasksQuery.data ?? []} />
     </div>
