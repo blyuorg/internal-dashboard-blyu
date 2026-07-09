@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
 import { ExportButton } from "@/components/shell/ExportButton";
 import { HistoricalProjects } from "@/components/shell/HistoricalProjects";
+import { ActivityLog } from "@/components/shell/ActivityLog";
 import { syncTaskToCalendar } from "@/lib/calendarSync";
 import type { CapabilityFlag, TaskStatus } from "@/lib/database.types";
 
@@ -335,6 +336,8 @@ export default function CeoDashboard() {
           </table>
         </div>
       </section>
+
+      <ActivityLog />
 
       <HistoricalProjects />
     </div>

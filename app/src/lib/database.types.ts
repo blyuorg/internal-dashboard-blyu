@@ -126,6 +126,20 @@ export type AuditLogRow = {
   created_at: string;
 };
 
+export type WorkSessionStatus = "active" | "completed" | "expired";
+
+export type WorkSessionsRow = {
+  id: string;
+  user_id: string;
+  task_id: string;
+  pool_tag: PoolTag;
+  started_at: string;
+  last_checkin_at: string;
+  ended_at: string | null;
+  status: WorkSessionStatus;
+  time_log_id: string | null;
+};
+
 export type PaymentType = "advance" | "completion";
 
 export type CashLedgerRow = {
@@ -225,6 +239,12 @@ export interface Database {
         Row: TimeLogsRow;
         Insert: Partial<TimeLogsRow>;
         Update: Partial<TimeLogsRow>;
+        Relationships: [];
+      };
+      work_sessions: {
+        Row: WorkSessionsRow;
+        Insert: Partial<WorkSessionsRow>;
+        Update: Partial<WorkSessionsRow>;
         Relationships: [];
       };
       finder_fee_log: {

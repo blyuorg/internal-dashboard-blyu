@@ -28,7 +28,7 @@ export default function App() {
       <Route
         path="/ceo"
         element={
-          <ProtectedRoute allow={["ceo"]}>
+          <ProtectedRoute dashboard="ceo">
             <AppShell>
               <CeoDashboard />
             </AppShell>
@@ -38,7 +38,7 @@ export default function App() {
       <Route
         path="/cto"
         element={
-          <ProtectedRoute allow={["cto"]}>
+          <ProtectedRoute dashboard="cto">
             <AppShell>
               <CtoDashboard />
             </AppShell>
@@ -48,7 +48,7 @@ export default function App() {
       <Route
         path="/cfo"
         element={
-          <ProtectedRoute allow={["cfo"]}>
+          <ProtectedRoute dashboard="cfo">
             <AppShell>
               <CfoDashboard />
             </AppShell>

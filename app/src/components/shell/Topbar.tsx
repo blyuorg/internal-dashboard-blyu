@@ -2,6 +2,7 @@ import { Moon, Sun, Bell, Search, LogOut } from "lucide-react";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { TimerWidget } from "@/components/timer/TimerWidget";
 
 export function Topbar() {
   const { theme, toggle } = useDarkMode();
@@ -21,6 +22,7 @@ export function Topbar() {
       </button>
 
       <div className="flex items-center gap-3">
+        <TimerWidget />
         <button onClick={toggle} aria-label="Toggle dark mode" className="rounded-md p-1.5 hover:bg-[var(--color-bg)]">
           {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
         </button>

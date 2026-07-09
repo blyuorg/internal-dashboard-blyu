@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
 import { ExportButton } from "@/components/shell/ExportButton";
 import { HistoricalProjects } from "@/components/shell/HistoricalProjects";
+import { ActivityLog } from "@/components/shell/ActivityLog";
 
 export default function CfoDashboard() {
   const { session } = useAuth();
@@ -272,6 +273,8 @@ export default function CfoDashboard() {
           </table>
         </div>
       </section>
+
+      <ActivityLog />
 
       <HistoricalProjects />
     </div>

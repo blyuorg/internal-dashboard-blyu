@@ -26,7 +26,13 @@ export default function Login() {
   async function handleGoogle() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { scopes: "https://www.googleapis.com/auth/calendar.events" },
+      options: {
+        scopes: "https://www.googleapis.com/auth/calendar.events",
+        // Explicit, so the OAuth callback always lands back on whichever
+        // origin the user started from (localhost in dev, the real deploy
+        // in prod) instead of Supabase's configured Site URL default.
+        redirectTo: window.location.origin,
+      },
     });
   }
 

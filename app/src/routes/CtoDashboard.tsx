@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { HistoricalProjects } from "@/components/shell/HistoricalProjects";
+import { ActivityLog } from "@/components/shell/ActivityLog";
 import { syncTaskToCalendar } from "@/lib/calendarSync";
 import type { TaskStatus } from "@/lib/database.types";
 
@@ -260,6 +261,8 @@ export default function CtoDashboard() {
       </section>
 
       <ProjectChat projects={projectsQuery.data ?? []} />
+
+      <ActivityLog />
 
       <HistoricalProjects />
     </div>
