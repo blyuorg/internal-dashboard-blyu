@@ -185,6 +185,7 @@ export type PayoutRunStatus = "draft" | "approved" | "paid";
 
 export type PayoutRunsRow = {
   id: string;
+  project_id: string | null;
   period_start: string;
   period_end: string;
   config_snapshot_json: PayoutConfigRow;

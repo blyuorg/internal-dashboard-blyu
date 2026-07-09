@@ -63,8 +63,20 @@ export default function CfoDashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("payout_runs")
-        .select("id, period_start, period_end, status, total_distributed, created_at")
+        .select("id, project_id, period_start, period_end, status, total_distributed, created_at")
         .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Includes archived projects too, so payout run history for a since-closed
+  // project still shows its name — nothing about past pay data should look
+  // blank just because the project itself was archived later.
+  const allProjectsQuery = useQuery({
+    queryKey: ["projects-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("projects").select("id, name");
       if (error) throw error;
       return data;
     },
@@ -73,6 +85,11 @@ export default function CfoDashboard() {
   const projectsById = useMemo(
     () => new Map((projectsQuery.data ?? []).map((p) => [p.id, p.name])),
     [projectsQuery.data]
+  );
+
+  const allProjectsById = useMemo(
+    () => new Map((allProjectsQuery.data ?? []).map((p) => [p.id, p.name])),
+    [allProjectsQuery.data]
   );
 
   const collectedByProject = useMemo(() => {
@@ -225,6 +242,7 @@ export default function CfoDashboard() {
         collectedByProject={collectedByProject}
         costsByProject={costsByProject}
         reserveByProject={reserveByProject}
+        existingRuns={payoutRunsQuery.data ?? []}
         generatedBy={userId ?? ""}
       />
 
@@ -236,6 +254,7 @@ export default function CfoDashboard() {
             filename="payout-run-history"
             rows={() =>
               (payoutRunsQuery.data ?? []).map((r) => ({
+                Project: r.project_id ? allProjectsById.get(r.project_id) ?? r.project_id : "—",
                 Period: `${r.period_start} to ${r.period_end}`,
                 Status: r.status,
                 "Total distributed": r.total_distributed,
@@ -247,6 +266,7 @@ export default function CfoDashboard() {
           <table className="w-full text-left text-sm">
             <thead className="bg-[var(--color-surface)] text-[var(--color-text-muted)]">
               <tr>
+                <th className="px-3 py-2">Project</th>
                 <th className="px-3 py-2">Period</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Total distributed</th>
@@ -256,6 +276,9 @@ export default function CfoDashboard() {
               {(payoutRunsQuery.data ?? []).map((r) => (
                 <tr key={r.id} className="border-t border-[var(--color-border)]">
                   <td className="px-3 py-2">
+                    {r.project_id ? allProjectsById.get(r.project_id) ?? "—" : "—"}
+                  </td>
+                  <td className="px-3 py-2">
                     {r.period_start} → {r.period_end}
                   </td>
                   <td className="px-3 py-2">{r.status}</td>
@@ -264,7 +287,7 @@ export default function CfoDashboard() {
               ))}
               {payoutRunsQuery.data?.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-3 py-4 text-center text-[var(--color-text-muted)]">
+                  <td colSpan={4} className="px-3 py-4 text-center text-[var(--color-text-muted)]">
                     No payout runs yet.
                   </td>
                 </tr>
@@ -410,6 +433,7 @@ function PayoutEngine({
   collectedByProject,
   costsByProject,
   reserveByProject,
+  existingRuns,
   generatedBy,
 }: {
   projects: { id: string; name: string }[];
@@ -417,6 +441,7 @@ function PayoutEngine({
   collectedByProject: Map<string, number>;
   costsByProject: Map<string, number>;
   reserveByProject: Map<string, number>;
+  existingRuns: { project_id: string | null; period_start: string; period_end: string }[];
   generatedBy: string;
 }) {
   const queryClient = useQueryClient();
@@ -425,9 +450,23 @@ function PayoutEngine({
   const [periodEnd, setPeriodEnd] = useState("");
   const [qualityByUser, setQualityByUser] = useState<Record<string, QualityTier>>({});
 
+  const overlappingRun = useMemo(() => {
+    if (!projectId || !periodStart || !periodEnd) return null;
+    return (
+      existingRuns.find(
+        (r) =>
+          r.project_id === projectId && periodStart <= r.period_end && periodEnd >= r.period_start
+      ) ?? null
+    );
+  }, [existingRuns, projectId, periodStart, periodEnd]);
+
+  // Scoped to [periodStart, periodEnd] (inclusive) by log_date — critical so
+  // a second payout run for the same project doesn't re-pay hours already
+  // covered by an earlier run. Nothing is ever deleted from time_logs, so as
+  // long as periods don't overlap, every logged hour gets paid exactly once.
   const teamHoursQuery = useQuery({
-    queryKey: ["team-hours-for-payout", projectId],
-    enabled: !!projectId,
+    queryKey: ["team-hours-for-payout", projectId, periodStart, periodEnd],
+    enabled: !!projectId && !!periodStart && !!periodEnd,
     queryFn: async () => {
       const { data: tasks, error: tasksErr } = await supabase
         .from("tasks")
@@ -440,7 +479,9 @@ function PayoutEngine({
         .from("time_logs")
         .select("user_id, hours, pool_tag")
         .in("task_id", taskIds)
-        .eq("pool_tag", "team");
+        .eq("pool_tag", "team")
+        .gte("log_date", periodStart)
+        .lte("log_date", periodEnd);
       if (logsErr) throw logsErr;
       const userIds = [...new Set((logs ?? []).map((l) => l.user_id))];
       const { data: users, error: usersErr } =
@@ -518,6 +559,7 @@ function PayoutEngine({
       const { data: run, error: runErr } = await supabase
         .from("payout_runs")
         .insert({
+          project_id: projectId,
           period_start: periodStart,
           period_end: periodEnd,
           config_snapshot_json: config,
@@ -638,9 +680,17 @@ function PayoutEngine({
               )}
             </div>
 
+            {overlappingRun && (
+              <p className="text-sm text-[var(--color-critical)]">
+                This period overlaps an existing run ({overlappingRun.period_start} →{" "}
+                {overlappingRun.period_end}) for this project — running it would double-pay those hours.
+                Pick a non-overlapping period.
+              </p>
+            )}
+
             <button
               onClick={() => runPayout.mutate()}
-              disabled={!periodStart || !periodEnd || !config}
+              disabled={!periodStart || !periodEnd || !config || !!overlappingRun}
               className="self-start rounded bg-[var(--color-accent)] px-4 py-1.5 text-sm text-[var(--color-accent-fg)] disabled:opacity-50"
             >
               Run payout
