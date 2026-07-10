@@ -35,8 +35,22 @@
   --color-critical: #f87171;
 }
 
+:root[data-theme="pink"] {
+  color-scheme: light;
+  --color-bg: #fef8f5;
+  --color-surface: #fff5f8;
+  --color-border: #fbd0de;
+  --color-text: #5b2340;
+  --color-text-muted: #b3607d;
+  --color-accent: #f978ae;
+  --color-accent-fg: #ffffff;
+  --color-good: #16a34a;
+  --color-warn: #d97706;
+  --color-critical: #e11d48;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not([data-theme="pink"]) {
     color-scheme: dark;
     --color-bg: #0f0f12;
     --color-surface: #17171b;

@@ -38,9 +38,12 @@ export type UserCapabilityFlagsRow = {
   granted_at: string;
 };
 
+export type ThemeName = "light" | "dark" | "pink";
+
 export type UserPreferencesRow = {
   user_id: string;
   dark_mode: boolean;
+  theme: ThemeName;
   notification_settings: Record<string, unknown>;
   google_calendar_connected: boolean;
 };
