@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
+import { BlyuLogo } from "@/components/shell/BlyuLogo";
 import type { CapabilityFlag } from "@/lib/database.types";
 
 // Every user always sees "My Tasks" (their own tasks/time log/earnings).
@@ -28,7 +29,10 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-56 shrink-0 flex-col gap-1 border-r border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-      <div className="mb-6 px-2 text-sm font-semibold tracking-tight">Blyu</div>
+      <div className="mb-6 flex items-center gap-2 px-2 text-sm font-semibold tracking-tight">
+        <BlyuLogo size={20} />
+        Blyu
+      </div>
       {items.map((item) => (
         <NavLink
           key={item.to}

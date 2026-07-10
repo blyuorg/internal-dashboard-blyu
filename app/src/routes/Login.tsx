@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Navigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAuth, defaultRouteForRole } from "@/lib/auth";
+import { BlyuLogo } from "@/components/shell/BlyuLogo";
 
 export default function Login() {
   const { session, profile, loading } = useAuth();
@@ -66,6 +67,7 @@ export default function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] text-[var(--color-text)]">
       <div className="w-full max-w-sm rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 shadow-sm">
+        <BlyuLogo size={40} className="mb-3" />
         <h1 className="mb-1 text-xl font-semibold">Blyu</h1>
         <p className="mb-6 text-sm text-[var(--color-text-muted)]">Sign in to your dashboard</p>
 
