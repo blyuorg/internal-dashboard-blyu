@@ -139,6 +139,25 @@ export default function CeoDashboard() {
     },
   });
 
+  const createProject = useMutation({
+    mutationFn: async (input: { name: string; clientName: string; contractValue: number }) => {
+      const { error } = await supabase.from("projects").insert({
+        name: input.name,
+        client_name: input.clientName,
+        contract_value: input.contractValue,
+        status: "active",
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      // Every dashboard's project dropdown shares this query key, so this
+      // single invalidate refreshes the "Assign a task" picker immediately.
+      queryClient.invalidateQueries({ queryKey: ["projects-active"] });
+      queryClient.invalidateQueries({ queryKey: ["projects-all"] });
+      queryClient.invalidateQueries({ queryKey: ["historical-projects"] });
+    },
+  });
+
   const signoffDecision = useMutation({
     mutationFn: async ({
       deliverableId,
@@ -230,7 +249,17 @@ export default function CeoDashboard() {
   return (
     <div className="flex flex-col gap-8">
       <section>
+        <h1 className="mb-3 text-lg font-semibold">New project</h1>
+        <NewProjectForm onCreate={(input) => createProject.mutate(input)} />
+      </section>
+
+      <section>
         <h1 className="mb-3 text-lg font-semibold">Assign a task</h1>
+        {projectsQuery.data?.length === 0 && (
+          <p className="mb-2 text-sm text-[var(--color-text-muted)]">
+            No projects yet — create one above first.
+          </p>
+        )}
         <TaskAssignForm
           projects={projectsQuery.data ?? []}
           users={usersQuery.data ?? []}
@@ -340,6 +369,48 @@ export default function CeoDashboard() {
       <ActivityLog />
 
       <HistoricalProjects />
+    </div>
+  );
+}
+
+function NewProjectForm({
+  onCreate,
+}: {
+  onCreate: (input: { name: string; clientName: string; contractValue: number }) => void;
+}) {
+  const [name, setName] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [contractValue, setContractValue] = useState("");
+
+  function submit() {
+    if (!name || !clientName) return;
+    onCreate({ name, clientName, contractValue: Number(contractValue || 0) });
+    setName("");
+    setClientName("");
+    setContractValue("");
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <Field label="Project name">
+        <input value={name} onChange={(e) => setName(e.target.value)} className="input" placeholder="e.g. Acme Website Revamp" />
+      </Field>
+      <Field label="Client">
+        <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input" placeholder="e.g. Acme Corp" />
+      </Field>
+      <Field label="Contract value">
+        <input
+          type="number"
+          min="0"
+          value={contractValue}
+          onChange={(e) => setContractValue(e.target.value)}
+          className="input w-32"
+          placeholder="0"
+        />
+      </Field>
+      <button onClick={submit} className="rounded bg-[var(--color-accent)] px-4 py-1.5 text-sm text-[var(--color-accent-fg)]">
+        Create project
+      </button>
     </div>
   );
 }
