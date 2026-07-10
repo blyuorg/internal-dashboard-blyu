@@ -223,17 +223,19 @@ function TaskRow({
         <div className="flex gap-1">
           <input
             type="number"
-            min="0"
-            step="0.5"
+            min="0.25"
+            max="16"
+            step="0.25"
             value={hours}
             onChange={(e) => setHours(e.target.value)}
             className="w-16 rounded border border-[var(--color-border)] bg-transparent px-1.5 py-1 text-xs"
             placeholder="hrs"
+            title="Max 16 hours per entry — use the timer for continuous sessions"
           />
           <button
             onClick={() => {
               const h = Number(hours);
-              if (h > 0) {
+              if (h > 0 && h <= 16) {
                 onLogTime(h);
                 setHours("");
               }

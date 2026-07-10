@@ -355,17 +355,19 @@ function PersonalTimeLog({
       </select>
       <input
         type="number"
-        min="0"
-        step="0.5"
+        min="0.25"
+        max="16"
+        step="0.25"
         value={hours}
         onChange={(e) => setHours(e.target.value)}
         placeholder="hrs"
+        title="Max 16 hours per entry — use the timer for continuous sessions"
         className="w-16 rounded border border-[var(--color-border)] bg-transparent px-2 py-1.5 text-sm"
       />
       <button
         onClick={() => {
           const h = Number(hours);
-          if (taskId && h > 0) {
+          if (taskId && h > 0 && h <= 16) {
             onLog(taskId, h);
             setHours("");
           }

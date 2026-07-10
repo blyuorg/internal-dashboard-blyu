@@ -33,33 +33,42 @@ Deno.serve(async () => {
 
   const results = [];
   for (const s of staleSessions ?? []) {
-    const hours = Math.max(
+    // Same bounds as the time_logs_hours_bounds constraint: a session
+    // abandoned the instant it started (started_at === last_checkin_at)
+    // records nothing rather than inserting a meaningless 0h row; anything
+    // implausibly long gets capped, not left to fail the insert.
+    const rawHours = Math.max(
       0,
       (new Date(s.last_checkin_at).getTime() - new Date(s.started_at).getTime()) / 3_600_000
     );
+    const hours = Number(Math.min(rawHours, 16).toFixed(2));
 
-    const { data: log, error: logErr } = await admin
-      .from("time_logs")
-      .insert({
-        task_id: s.task_id,
-        user_id: s.user_id,
-        hours: Number(hours.toFixed(2)),
-        pool_tag: s.pool_tag,
-      })
-      .select("id")
-      .single();
+    let logId: string | null = null;
+    if (hours > 0) {
+      const { data: log, error: logErr } = await admin
+        .from("time_logs")
+        .insert({
+          task_id: s.task_id,
+          user_id: s.user_id,
+          hours,
+          pool_tag: s.pool_tag,
+        })
+        .select("id")
+        .single();
 
-    if (logErr) {
-      results.push({ session_id: s.id, error: logErr.message });
-      continue;
+      if (logErr) {
+        results.push({ session_id: s.id, error: logErr.message });
+        continue;
+      }
+      logId = log.id;
     }
 
     const { error: updateErr } = await admin
       .from("work_sessions")
-      .update({ status: "expired", ended_at: new Date().toISOString(), time_log_id: log.id })
+      .update({ status: "expired", ended_at: new Date().toISOString(), time_log_id: logId })
       .eq("id", s.id);
 
-    results.push({ session_id: s.id, time_log_id: log.id, error: updateErr?.message ?? null });
+    results.push({ session_id: s.id, time_log_id: logId, error: updateErr?.message ?? null });
   }
 
   return new Response(JSON.stringify({ expired: results.length, results }), { status: 200 });

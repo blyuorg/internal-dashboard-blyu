@@ -1,9 +1,13 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
 import { ExportButton } from "./ExportButton";
 
 export function HistoricalProjects() {
+  const { profile, flags } = useAuth();
+  const canReactivate = profile?.base_role === "ceo" || flags.has("is_admin_ceo");
+  const queryClient = useQueryClient();
   const [clientFilter, setClientFilter] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -61,6 +65,18 @@ export function HistoricalProjects() {
     return map;
   }, [tasksQuery.data, timeLogsQuery.data]);
 
+  const reactivate = useMutation({
+    mutationFn: async (projectId: string) => {
+      const { error } = await supabase.from("projects").update({ status: "active" }).eq("id", projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["historical-projects"] });
+      queryClient.invalidateQueries({ queryKey: ["projects-active"] });
+      queryClient.invalidateQueries({ queryKey: ["projects-all"] });
+    },
+  });
+
   return (
     <section>
       <div className="mb-3 flex items-center justify-between">
@@ -110,6 +126,7 @@ export function HistoricalProjects() {
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Logged hours</th>
               <th className="px-3 py-2">Created</th>
+              {canReactivate && <th className="px-3 py-2" />}
             </tr>
           </thead>
           <tbody>
@@ -127,11 +144,23 @@ export function HistoricalProjects() {
                 </td>
                 <td className="px-3 py-2">{hoursByProject.get(p.id) ?? 0}</td>
                 <td className="px-3 py-2">{new Date(p.created_at).toLocaleDateString()}</td>
+                {canReactivate && (
+                  <td className="px-3 py-2">
+                    {p.status === "archived" && (
+                      <button
+                        onClick={() => reactivate.mutate(p.id)}
+                        className="rounded border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-bg)]"
+                      >
+                        Reactivate
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-4 text-center text-[var(--color-text-muted)]">
+                <td colSpan={canReactivate ? 7 : 6} className="px-3 py-4 text-center text-[var(--color-text-muted)]">
                   No projects match these filters.
                 </td>
               </tr>

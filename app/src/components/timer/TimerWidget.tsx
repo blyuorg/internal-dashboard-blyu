@@ -80,20 +80,31 @@ export function TimerWidget() {
       hoursEndTime: string;
       status: "completed" | "expired";
     }) => {
-      const hours = Math.max(
+      // Clamp to the same bounds as time_logs_hours_bounds (0, 16] — a
+      // session that rounds to 0h (stopped almost instantly) records
+      // nothing rather than tripping the DB constraint; anything absurdly
+      // long (forgotten running timer) is capped, not silently truncated to
+      // a failed insert.
+      const rawHours = Math.max(
         0,
         (new Date(hoursEndTime).getTime() - new Date(startedAt).getTime()) / 3_600_000
       );
-      const { data: log, error: logErr } = await supabase
-        .from("time_logs")
-        .insert({ task_id: taskId, user_id: userId!, hours: Number(hours.toFixed(2)), pool_tag: poolTag })
-        .select("id")
-        .single();
-      if (logErr) throw logErr;
+      const hours = Number(Math.min(rawHours, 16).toFixed(2));
+
+      let logId: string | null = null;
+      if (hours > 0) {
+        const { data: log, error: logErr } = await supabase
+          .from("time_logs")
+          .insert({ task_id: taskId, user_id: userId!, hours, pool_tag: poolTag })
+          .select("id")
+          .single();
+        if (logErr) throw logErr;
+        logId = log.id;
+      }
 
       const { error: sessErr } = await supabase
         .from("work_sessions")
-        .update({ status, ended_at: new Date().toISOString(), time_log_id: log.id })
+        .update({ status, ended_at: new Date().toISOString(), time_log_id: logId })
         .eq("id", sessionId);
       if (sessErr) throw sessErr;
     },

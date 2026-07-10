@@ -158,6 +158,21 @@ export default function CeoDashboard() {
     },
   });
 
+  // Archiving (never deleting) is the only "removal" path per the
+  // never-hard-delete rule — an archived project stays fully queryable
+  // under Historical project lookup, just filtered out of active pickers.
+  const archiveProject = useMutation({
+    mutationFn: async (projectId: string) => {
+      const { error } = await supabase.from("projects").update({ status: "archived" }).eq("id", projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects-active"] });
+      queryClient.invalidateQueries({ queryKey: ["projects-all"] });
+      queryClient.invalidateQueries({ queryKey: ["historical-projects"] });
+    },
+  });
+
   const signoffDecision = useMutation({
     mutationFn: async ({
       deliverableId,
@@ -251,6 +266,28 @@ export default function CeoDashboard() {
       <section>
         <h1 className="mb-3 text-lg font-semibold">New project</h1>
         <NewProjectForm onCreate={(input) => createProject.mutate(input)} />
+        {(projectsQuery.data?.length ?? 0) > 0 && (
+          <ul className="mt-3 flex flex-col gap-1 text-sm">
+            {(projectsQuery.data ?? []).map((p) => (
+              <li
+                key={p.id}
+                className="flex items-center justify-between rounded border border-[var(--color-border)] px-3 py-1.5"
+              >
+                <span>{p.name}</span>
+                <button
+                  onClick={() => {
+                    if (confirm(`Archive "${p.name}"? It stays fully visible under Historical project lookup.`)) {
+                      archiveProject.mutate(p.id);
+                    }
+                  }}
+                  className="rounded border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-bg)]"
+                >
+                  Archive
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section>
