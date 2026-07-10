@@ -14,6 +14,33 @@ export default function Login() {
     return <Navigate to={defaultRouteForRole(profile.base_role)} replace />;
   }
 
+  // Signed in with Google/Supabase but no matching users row — most often
+  // means they authenticated with a different email than the one the CEO
+  // provisioned (a typo on either side). Say so explicitly instead of
+  // silently bouncing them back to this same form with no explanation.
+  if (session && !loading && !profile) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] text-[var(--color-text)]">
+        <div className="w-full max-w-sm rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 text-center shadow-sm">
+          <h1 className="mb-2 text-lg font-semibold">No account found</h1>
+          <p className="mb-1 text-sm text-[var(--color-text-muted)]">
+            Signed in as <span className="text-[var(--color-text)]">{session.user.email}</span>
+          </p>
+          <p className="mb-6 text-sm text-[var(--color-text-muted)]">
+            This email hasn't been added to Blyu yet. Ask your CEO to provision it, or sign in with
+            the correct account if you have one.
+          </p>
+          <button
+            onClick={() => supabase.auth.signOut()}
+            className="w-full rounded-md border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg)]"
+          >
+            Sign out and try another account
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
