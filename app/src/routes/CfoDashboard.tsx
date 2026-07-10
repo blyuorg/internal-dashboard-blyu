@@ -297,6 +297,14 @@ export default function CfoDashboard() {
         </div>
       </section>
 
+      <ProjectHoursExport
+        projects={projectsQuery.data ?? []}
+        config={configQuery.data ?? null}
+        collectedByProject={collectedByProject}
+        costsByProject={costsByProject}
+        reserveByProject={reserveByProject}
+      />
+
       <ActivityLog />
 
       <HistoricalProjects />
@@ -695,6 +703,291 @@ function PayoutEngine({
             >
               Run payout
             </button>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// Read-only reporting tool: pick a project, see every person who has ever
+// logged hours against it (all-time — this is a record-keeping view, not a
+// payout run, so it is deliberately not period-scoped) with the payout
+// formula applied so the CFO can export a spreadsheet showing hours worked
+// and the calculated ₹ share per person, without committing an actual run.
+function ProjectHoursExport({
+  projects,
+  config,
+  collectedByProject,
+  costsByProject,
+  reserveByProject,
+}: {
+  projects: { id: string; name: string }[];
+  config: import("@/lib/database.types").PayoutConfigRow | null;
+  collectedByProject: Map<string, number>;
+  costsByProject: Map<string, number>;
+  reserveByProject: Map<string, number>;
+}) {
+  const [projectId, setProjectId] = useState("");
+  const [qualityByUser, setQualityByUser] = useState<Record<string, QualityTier>>({});
+
+  const projectName = projects.find((p) => p.id === projectId)?.name ?? "";
+
+  const hoursQuery = useQuery({
+    queryKey: ["project-hours-export", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data: tasks, error: tasksErr } = await supabase
+        .from("tasks")
+        .select("id")
+        .eq("project_id", projectId);
+      if (tasksErr) throw tasksErr;
+      const taskIds = (tasks ?? []).map((t) => t.id);
+      if (taskIds.length === 0) return { logs: [], users: [] };
+
+      const { data: logs, error: logsErr } = await supabase
+        .from("time_logs")
+        .select("user_id, hours, pool_tag")
+        .in("task_id", taskIds);
+      if (logsErr) throw logsErr;
+
+      const userIds = [...new Set((logs ?? []).map((l) => l.user_id))];
+      const { data: users, error: usersErr } =
+        userIds.length > 0
+          ? await supabase.from("users").select("id, name, base_role").in("id", userIds)
+          : { data: [], error: null };
+      if (usersErr) throw usersErr;
+      return { logs: logs ?? [], users: users ?? [] };
+    },
+  });
+
+  const finderQuery = useQuery({
+    queryKey: ["first-finder-export", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("finder_fee_log")
+        .select("logged_by")
+        .eq("project_id", projectId)
+        .order("logged_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const usersById = useMemo(
+    () => new Map((hoursQuery.data?.users ?? []).map((u) => [u.id, u])),
+    [hoursQuery.data]
+  );
+
+  const qualityRule = config?.quality_factor_rule_json ?? {
+    rework: 0.9,
+    met_specification: 1.0,
+    above_expectations: 1.1,
+  };
+  const roleWeights = config?.role_weights_json ?? {};
+  const poolSplit = config?.pool_split_json ?? {
+    kpi_team_pool_pct: 0.6,
+    founder_pool_pct: 0.3,
+    finders_fee_pool_pct: 0.1,
+  };
+
+  const cashCollected = collectedByProject.get(projectId) ?? 0;
+  const directCosts = costsByProject.get(projectId) ?? 0;
+  const reserve = reserveByProject.get(projectId) ?? 0;
+  const remainingProfit = Math.max(0, cashCollected - directCosts - reserve);
+  const kpiTeamPool = remainingProfit * poolSplit.kpi_team_pool_pct;
+  const founderPool = remainingProfit * poolSplit.founder_pool_pct;
+  const findersFeePool = remainingProfit * poolSplit.finders_fee_pool_pct;
+
+  const teamHoursByUser = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const log of hoursQuery.data?.logs ?? []) {
+      if (log.pool_tag !== "team") continue;
+      map.set(log.user_id, (map.get(log.user_id) ?? 0) + Number(log.hours));
+    }
+    return map;
+  }, [hoursQuery.data]);
+
+  const founderHoursByUser = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const log of hoursQuery.data?.logs ?? []) {
+      if (log.pool_tag !== "founder") continue;
+      map.set(log.user_id, (map.get(log.user_id) ?? 0) + Number(log.hours));
+    }
+    return map;
+  }, [hoursQuery.data]);
+
+  const teamRows = useMemo(() => {
+    const totalPoints = [...teamHoursByUser.entries()].reduce((sum, [userId, hours]) => {
+      const qf = qualityRule[qualityByUser[userId] ?? "met_specification"];
+      const rw = roleWeights[userId] ?? 1;
+      return sum + hours * rw * qf;
+    }, 0);
+    return [...teamHoursByUser.entries()].map(([userId, hours]) => {
+      const tier = qualityByUser[userId] ?? "met_specification";
+      const qf = qualityRule[tier];
+      const rw = roleWeights[userId] ?? 1;
+      const points = hours * rw * qf;
+      const amount = totalPoints > 0 ? (points / totalPoints) * kpiTeamPool : 0;
+      return { userId, hours, roleWeight: rw, qualityFactor: qf, points, amount, pool: "KPI Team" as const };
+    });
+  }, [teamHoursByUser, qualityByUser, qualityRule, roleWeights, kpiTeamPool]);
+
+  const founderRows = useMemo(() => {
+    const founderUserIds = [...founderHoursByUser.keys()];
+    if (founderUserIds.length === 0) return [];
+    const share = founderPool / founderUserIds.length;
+    return founderUserIds.map((userId) => ({
+      userId,
+      hours: founderHoursByUser.get(userId) ?? 0,
+      roleWeight: 1,
+      qualityFactor: 1,
+      points: 0,
+      amount: share,
+      pool: "Founder" as const,
+    }));
+  }, [founderHoursByUser, founderPool]);
+
+  const finderRow = finderQuery.data?.logged_by
+    ? {
+        userId: finderQuery.data.logged_by,
+        hours: 0,
+        roleWeight: 1,
+        qualityFactor: 1,
+        points: 0,
+        amount: findersFeePool,
+        pool: "Finder's Fee" as const,
+      }
+    : null;
+
+  const allRows = [...teamRows, ...founderRows, ...(finderRow ? [finderRow] : [])];
+
+  return (
+    <section>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Project hours &amp; payment export</h2>
+        <ExportButton
+          requiresFlag="can_export_financial_data"
+          filename={projectName ? `${projectName}-hours-payment` : "project-hours-payment"}
+          rows={() =>
+            allRows.map((r) => ({
+              Project: projectName,
+              Person: usersById.get(r.userId)?.name ?? r.userId,
+              Role: usersById.get(r.userId)?.base_role ?? "",
+              Pool: r.pool,
+              Hours: r.hours,
+              "Role weight": r.roleWeight,
+              "Quality factor": r.qualityFactor,
+              Points: Number(r.points.toFixed(3)),
+              "₹ Share (calculated, unpaid preview)": Number(r.amount.toFixed(2)),
+              "Cash collected": cashCollected,
+              "Direct costs": directCosts,
+              Reserve: reserve,
+              "Remaining profit": remainingProfit,
+              "Generated at": new Date().toISOString(),
+            }))
+          }
+        />
+      </div>
+
+      <div className="flex flex-col gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="input self-start">
+          <option value="">Select project…</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+
+        {projectId && (
+          <>
+            <div className="grid grid-cols-4 gap-3 text-sm">
+              <Waterfall label="Cash collected" value={cashCollected} />
+              <Waterfall label="− Direct costs" value={-directCosts} />
+              <Waterfall label="− Reserve" value={-reserve} />
+              <Waterfall label="= Remaining profit" value={remainingProfit} bold />
+            </div>
+
+            <table className="w-full text-left text-sm">
+              <thead className="text-[var(--color-text-muted)]">
+                <tr>
+                  <th className="py-1">Person</th>
+                  <th className="py-1">Pool</th>
+                  <th className="py-1">Hours</th>
+                  <th className="py-1">Quality</th>
+                  <th className="py-1">Points</th>
+                  <th className="py-1">₹ Share</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamRows.map((r) => (
+                  <tr key={r.userId} className="border-t border-[var(--color-border)]">
+                    <td className="py-1">{usersById.get(r.userId)?.name ?? r.userId}</td>
+                    <td className="py-1">{r.pool}</td>
+                    <td className="py-1">{r.hours}</td>
+                    <td className="py-1">
+                      <select
+                        value={qualityByUser[r.userId] ?? "met_specification"}
+                        onChange={(e) =>
+                          setQualityByUser((prev) => ({
+                            ...prev,
+                            [r.userId]: e.target.value as QualityTier,
+                          }))
+                        }
+                        className="input"
+                      >
+                        <option value="rework">Rework (0.9)</option>
+                        <option value="met_specification">Met spec (1.0)</option>
+                        <option value="above_expectations">Above expectations (1.1)</option>
+                      </select>
+                    </td>
+                    <td className="py-1">{r.points.toFixed(2)}</td>
+                    <td className="py-1">
+                      ₹{r.amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                    </td>
+                  </tr>
+                ))}
+                {founderRows.map((r) => (
+                  <tr key={r.userId} className="border-t border-[var(--color-border)]">
+                    <td className="py-1">{usersById.get(r.userId)?.name ?? r.userId}</td>
+                    <td className="py-1">{r.pool}</td>
+                    <td className="py-1">{r.hours}</td>
+                    <td className="py-1">—</td>
+                    <td className="py-1">—</td>
+                    <td className="py-1">
+                      ₹{r.amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                    </td>
+                  </tr>
+                ))}
+                {finderRow && (
+                  <tr className="border-t border-[var(--color-border)]">
+                    <td className="py-1">{usersById.get(finderRow.userId)?.name ?? finderRow.userId}</td>
+                    <td className="py-1">{finderRow.pool}</td>
+                    <td className="py-1">—</td>
+                    <td className="py-1">—</td>
+                    <td className="py-1">—</td>
+                    <td className="py-1">
+                      ₹{finderRow.amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                    </td>
+                  </tr>
+                )}
+                {allRows.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-3 text-center text-[var(--color-text-muted)]">
+                      No hours logged on this project yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            <p className="text-xs text-[var(--color-text-muted)]">
+              This is a calculated preview for record-keeping and export — it does not create a payout
+              run. Use the payout engine above to actually run and pay.
+            </p>
           </>
         )}
       </div>
