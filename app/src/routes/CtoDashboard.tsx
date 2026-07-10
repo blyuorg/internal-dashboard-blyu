@@ -171,7 +171,9 @@ export default function CtoDashboard() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["all-time-logs"] }),
   });
 
-  const myTasks = (tasksQuery.data ?? []).filter((t) => t.assigned_to === userId);
+  const myTasks = (tasksQuery.data ?? [])
+    .filter((t) => t.assigned_to === userId)
+    .map((t) => ({ id: t.id, projectName: projectsById.get(t.project_id) ?? t.id.slice(0, 8) }));
   const totalPaid = (earningsQuery.data ?? []).reduce((sum, l) => sum + Number(l.amount_paid), 0);
 
   return (
@@ -332,7 +334,7 @@ function PersonalTimeLog({
   tasks,
   onLog,
 }: {
-  tasks: { id: string }[];
+  tasks: { id: string; projectName: string }[];
   onLog: (taskId: string, hours: number) => void;
 }) {
   const [taskId, setTaskId] = useState("");
@@ -347,7 +349,7 @@ function PersonalTimeLog({
         <option value="">Select task…</option>
         {tasks.map((t) => (
           <option key={t.id} value={t.id}>
-            {t.id.slice(0, 8)}
+            {t.projectName}
           </option>
         ))}
       </select>
