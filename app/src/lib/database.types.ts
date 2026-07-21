@@ -95,13 +95,6 @@ export type TimeLogsRow = {
   founder_approval_status: FounderApprovalStatus;
 };
 
-export type FinderFeeLogRow = {
-  id: string;
-  project_id: string;
-  logged_by: string | null;
-  logged_at: string;
-};
-
 export type PayoutRunLinesRow = {
   id: string;
   payout_run_id: string;
@@ -249,12 +242,6 @@ export interface Database {
         Row: WorkSessionsRow;
         Insert: Partial<WorkSessionsRow>;
         Update: Partial<WorkSessionsRow>;
-        Relationships: [];
-      };
-      finder_fee_log: {
-        Row: FinderFeeLogRow;
-        Insert: Partial<FinderFeeLogRow>;
-        Update: Partial<FinderFeeLogRow>;
         Relationships: [];
       };
       payout_run_lines: {

@@ -1,15 +1,17 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/lib/auth";
+import { useAuth, useHasFlag } from "@/lib/auth";
 import { ExportButton } from "@/components/shell/ExportButton";
 import { HistoricalProjects } from "@/components/shell/HistoricalProjects";
 import { ActivityLog } from "@/components/shell/ActivityLog";
+import { AssignTaskSection } from "@/components/shell/AssignTaskSection";
 
 export default function CfoDashboard() {
   const { session } = useAuth();
   const userId = session?.user.id;
   const queryClient = useQueryClient();
+  const canAssignTasks = useHasFlag("can_assign_tasks");
 
   const projectsQuery = useQuery({
     queryKey: ["projects-active"],
@@ -92,6 +94,19 @@ export default function CfoDashboard() {
     [allProjectsQuery.data]
   );
 
+  // Finder's fee (10% pool) recipient is now chosen manually by the CFO per
+  // payout run / export — no more automatic "first person to log a lead
+  // wins" — so the picker needs the full org roster, not just people who
+  // logged hours.
+  const allUsersQuery = useQuery({
+    queryKey: ["all-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("users").select("id, name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const collectedByProject = useMemo(() => {
     const map = new Map<string, number>();
     for (const row of cashLedgerQuery.data ?? []) {
@@ -162,6 +177,8 @@ export default function CfoDashboard() {
         <StatTile label="Direct costs" value={[...costsByProject.values()].reduce((a, b) => a + b, 0)} />
         <StatTile label={`Reserve (${(reservePct * 100).toFixed(0)}%)`} value={totalReserve} />
       </section>
+
+      {canAssignTasks && <AssignTaskSection />}
 
       <section>
         <div className="mb-3 flex items-center justify-between">
@@ -243,6 +260,7 @@ export default function CfoDashboard() {
         costsByProject={costsByProject}
         reserveByProject={reserveByProject}
         existingRuns={payoutRunsQuery.data ?? []}
+        allUsers={allUsersQuery.data ?? []}
         generatedBy={userId ?? ""}
       />
 
@@ -303,6 +321,7 @@ export default function CfoDashboard() {
         collectedByProject={collectedByProject}
         costsByProject={costsByProject}
         reserveByProject={reserveByProject}
+        allUsers={allUsersQuery.data ?? []}
       />
 
       <ActivityLog />
@@ -442,6 +461,7 @@ function PayoutEngine({
   costsByProject,
   reserveByProject,
   existingRuns,
+  allUsers,
   generatedBy,
 }: {
   projects: { id: string; name: string }[];
@@ -450,6 +470,7 @@ function PayoutEngine({
   costsByProject: Map<string, number>;
   reserveByProject: Map<string, number>;
   existingRuns: { project_id: string | null; period_start: string; period_end: string }[];
+  allUsers: { id: string; name: string }[];
   generatedBy: string;
 }) {
   const queryClient = useQueryClient();
@@ -457,6 +478,9 @@ function PayoutEngine({
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
   const [qualityByUser, setQualityByUser] = useState<Record<string, QualityTier>>({});
+  // Finder's fee (10% pool) recipient — manually chosen by the CFO, not
+  // auto-attributed. Left unset ("") until the run explicitly includes it.
+  const [finderUserId, setFinderUserId] = useState("");
 
   const overlappingRun = useMemo(() => {
     if (!projectId || !periodStart || !periodEnd) return null;
@@ -498,22 +522,6 @@ function PayoutEngine({
           : { data: [], error: null };
       if (usersErr) throw usersErr;
       return { logs: logs ?? [], users: users ?? [] };
-    },
-  });
-
-  const finderQuery = useQuery({
-    queryKey: ["first-finder", projectId],
-    enabled: !!projectId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("finder_fee_log")
-        .select("logged_by, logged_at")
-        .eq("project_id", projectId)
-        .order("logged_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
     },
   });
 
@@ -589,10 +597,10 @@ function PayoutEngine({
         amount_paid: l.amount,
       }));
 
-      if (finderQuery.data?.logged_by) {
+      if (finderUserId) {
         rows.push({
           payout_run_id: run.id,
-          user_id: finderQuery.data.logged_by,
+          user_id: finderUserId,
           hours: 0,
           role_weight: 1,
           quality_factor: 1,
@@ -681,11 +689,28 @@ function PayoutEngine({
                   })}
                 </tbody>
               </table>
-              {finderQuery.data?.logged_by && (
-                <p className="mt-2 text-xs text-[var(--color-text-muted)]">
-                  Finder's fee pool (₹{findersFeePool.toLocaleString("en-IN", { maximumFractionDigits: 0 })}) goes to the first verified lead source.
-                </p>
-              )}
+              <div className="mt-3 flex items-center gap-2 text-xs">
+                <span className="text-[var(--color-text-muted)]">
+                  Finder's fee pool (₹{findersFeePool.toLocaleString("en-IN", { maximumFractionDigits: 0 })}):
+                </span>
+                <select
+                  value={finderUserId}
+                  onChange={(e) => setFinderUserId(e.target.value)}
+                  className="input"
+                >
+                  <option value="">Not yet assigned</option>
+                  {allUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+                {!finderUserId && (
+                  <span className="text-[var(--color-warn)]">
+                    Will be left unassigned in this run until chosen.
+                  </span>
+                )}
+              </div>
             </div>
 
             {overlappingRun && (
@@ -721,15 +746,18 @@ function ProjectHoursExport({
   collectedByProject,
   costsByProject,
   reserveByProject,
+  allUsers,
 }: {
   projects: { id: string; name: string }[];
   config: import("@/lib/database.types").PayoutConfigRow | null;
   collectedByProject: Map<string, number>;
   costsByProject: Map<string, number>;
   reserveByProject: Map<string, number>;
+  allUsers: { id: string; name: string }[];
 }) {
   const [projectId, setProjectId] = useState("");
   const [qualityByUser, setQualityByUser] = useState<Record<string, QualityTier>>({});
+  const [finderUserId, setFinderUserId] = useState("");
 
   const projectName = projects.find((p) => p.id === projectId)?.name ?? "";
 
@@ -758,22 +786,6 @@ function ProjectHoursExport({
           : { data: [], error: null };
       if (usersErr) throw usersErr;
       return { logs: logs ?? [], users: users ?? [] };
-    },
-  });
-
-  const finderQuery = useQuery({
-    queryKey: ["first-finder-export", projectId],
-    enabled: !!projectId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("finder_fee_log")
-        .select("logged_by")
-        .eq("project_id", projectId)
-        .order("logged_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
     },
   });
 
@@ -851,9 +863,9 @@ function ProjectHoursExport({
     }));
   }, [founderHoursByUser, founderPool]);
 
-  const finderRow = finderQuery.data?.logged_by
+  const finderRow = finderUserId
     ? {
-        userId: finderQuery.data.logged_by,
+        userId: finderUserId,
         hours: 0,
         roleWeight: 1,
         qualityFactor: 1,
@@ -872,8 +884,8 @@ function ProjectHoursExport({
         <ExportButton
           requiresFlag="can_export_financial_data"
           filename={projectName ? `${projectName}-hours-payment` : "project-hours-payment"}
-          rows={() =>
-            allRows.map((r) => ({
+          rows={() => {
+            const exportRows = allRows.map((r) => ({
               Project: projectName,
               Person: usersById.get(r.userId)?.name ?? r.userId,
               Role: usersById.get(r.userId)?.base_role ?? "",
@@ -888,8 +900,30 @@ function ProjectHoursExport({
               Reserve: reserve,
               "Remaining profit": remainingProfit,
               "Generated at": new Date().toISOString(),
-            }))
-          }
+            }));
+            // No auto-attribution anymore — if the CFO hasn't picked a
+            // finder yet, the sheet still needs to say the 10% exists and
+            // is unassigned, not silently drop it.
+            if (!finderRow) {
+              exportRows.push({
+                Project: projectName,
+                Person: "Not yet assigned",
+                Role: "",
+                Pool: "Finder's Fee",
+                Hours: 0,
+                "Role weight": 1,
+                "Quality factor": 1,
+                Points: 0,
+                "₹ Share (calculated, unpaid preview)": Number(findersFeePool.toFixed(2)),
+                "Cash collected": cashCollected,
+                "Direct costs": directCosts,
+                Reserve: reserve,
+                "Remaining profit": remainingProfit,
+                "Generated at": new Date().toISOString(),
+              });
+            }
+            return exportRows;
+          }}
         />
       </div>
 
@@ -963,18 +997,32 @@ function ProjectHoursExport({
                     </td>
                   </tr>
                 ))}
-                {finderRow && (
-                  <tr className="border-t border-[var(--color-border)]">
-                    <td className="py-1">{usersById.get(finderRow.userId)?.name ?? finderRow.userId}</td>
-                    <td className="py-1">{finderRow.pool}</td>
-                    <td className="py-1">—</td>
-                    <td className="py-1">—</td>
-                    <td className="py-1">—</td>
-                    <td className="py-1">
-                      ₹{finderRow.amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                    </td>
-                  </tr>
-                )}
+                <tr className="border-t border-[var(--color-border)]">
+                  <td className="py-1">
+                    <select
+                      value={finderUserId}
+                      onChange={(e) => setFinderUserId(e.target.value)}
+                      className="input"
+                    >
+                      <option value="">Not yet assigned</option>
+                      {allUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="py-1">Finder's Fee</td>
+                  <td className="py-1">—</td>
+                  <td className="py-1">—</td>
+                  <td className="py-1">—</td>
+                  <td className="py-1">
+                    ₹{findersFeePool.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                    {!finderUserId && (
+                      <span className="ml-1 text-[var(--color-warn)]">(unassigned)</span>
+                    )}
+                  </td>
+                </tr>
                 {allRows.length === 0 && (
                   <tr>
                     <td colSpan={6} className="py-3 text-center text-[var(--color-text-muted)]">

@@ -23,12 +23,17 @@ export function ActivityLog() {
       const dayEnd = `${date}T23:59:59.999Z`;
       const { data, error } = await supabase
         .from("work_sessions")
-        .select("id, user_id, task_id, pool_tag, started_at, last_checkin_at, ended_at, status")
+        .select("id, user_id, task_id, pool_tag, started_at, last_checkin_at, ended_at, status, time_log_id")
         .gte("started_at", dayStart)
         .lte("started_at", dayEnd)
         .order("started_at", { ascending: false });
       if (error) throw error;
-      return data;
+      // A finalized (completed/expired) session with no time_log_id means
+      // the timer widget/expiry function skipped it — the session rounded
+      // to ~0h and recorded no real work (see TimerWidget.tsx finalize).
+      // Showing those as a green "completed" row with 0.0h was misleading,
+      // so they're excluded here; active sessions always show regardless.
+      return (data ?? []).filter((s) => s.status === "active" || s.time_log_id !== null);
     },
   });
 

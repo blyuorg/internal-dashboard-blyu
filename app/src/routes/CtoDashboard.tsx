@@ -161,19 +161,6 @@ export default function CtoDashboard() {
     },
   });
 
-  const logTime = useMutation({
-    mutationFn: async ({ taskId, hours }: { taskId: string; hours: number }) => {
-      const { error } = await supabase
-        .from("time_logs")
-        .insert({ task_id: taskId, user_id: userId!, hours, pool_tag: "founder" });
-      if (error) throw error;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["all-time-logs"] }),
-  });
-
-  const myTasks = (tasksQuery.data ?? [])
-    .filter((t) => t.assigned_to === userId)
-    .map((t) => ({ id: t.id, projectName: projectsById.get(t.project_id) ?? t.id.slice(0, 8) }));
   const totalPaid = (earningsQuery.data ?? []).reduce((sum, l) => sum + Number(l.amount_paid), 0);
 
   return (
@@ -245,22 +232,13 @@ export default function CtoDashboard() {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-6">
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <h2 className="mb-2 text-sm font-semibold text-[var(--color-text-muted)]">My earnings</h2>
-          <p className="text-2xl font-semibold">₹{totalPaid.toLocaleString("en-IN")}</p>
-          <p className="text-xs text-[var(--color-text-muted)]">
-            Across {earningsQuery.data?.length ?? 0} payout line(s)
-          </p>
-        </div>
-
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <h2 className="mb-2 text-sm font-semibold text-[var(--color-text-muted)]">
-            Personal time log ({myTasks.length} tasks)
-          </h2>
-          <PersonalTimeLog tasks={myTasks} onLog={(taskId, hours) => logTime.mutate({ taskId, hours })} />
-        </div>
-      </section>
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <h2 className="mb-2 text-sm font-semibold text-[var(--color-text-muted)]">My earnings</h2>
+        <p className="text-2xl font-semibold">₹{totalPaid.toLocaleString("en-IN")}</p>
+        <p className="text-xs text-[var(--color-text-muted)]">
+          Across {earningsQuery.data?.length ?? 0} payout line(s)
+        </p>
+      </div>
 
       <ProjectChat projects={projectsQuery.data ?? []} />
 
@@ -325,56 +303,6 @@ function ReviewRow({
         className="rounded bg-[var(--color-critical)] px-2 py-1 text-xs text-white"
       >
         Return
-      </button>
-    </div>
-  );
-}
-
-function PersonalTimeLog({
-  tasks,
-  onLog,
-}: {
-  tasks: { id: string; projectName: string }[];
-  onLog: (taskId: string, hours: number) => void;
-}) {
-  const [taskId, setTaskId] = useState("");
-  const [hours, setHours] = useState("");
-  return (
-    <div className="flex gap-2">
-      <select
-        value={taskId}
-        onChange={(e) => setTaskId(e.target.value)}
-        className="flex-1 rounded border border-[var(--color-border)] bg-transparent px-2 py-1.5 text-sm"
-      >
-        <option value="">Select task…</option>
-        {tasks.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.projectName}
-          </option>
-        ))}
-      </select>
-      <input
-        type="number"
-        min="0.25"
-        max="16"
-        step="0.25"
-        value={hours}
-        onChange={(e) => setHours(e.target.value)}
-        placeholder="hrs"
-        title="Max 16 hours per entry — use the timer for continuous sessions"
-        className="w-16 rounded border border-[var(--color-border)] bg-transparent px-2 py-1.5 text-sm"
-      />
-      <button
-        onClick={() => {
-          const h = Number(hours);
-          if (taskId && h > 0 && h <= 16) {
-            onLog(taskId, h);
-            setHours("");
-          }
-        }}
-        className="rounded bg-[var(--color-accent)] px-3 py-1.5 text-sm text-[var(--color-accent-fg)]"
-      >
-        Log
       </button>
     </div>
   );
