@@ -65,7 +65,7 @@ export default function CtoDashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("deliverables")
-        .select("id, task_id, link, review_status, review_notes")
+        .select("id, task_id, link, note, review_status, review_notes")
         .eq("review_status", "pending");
       if (error) throw error;
       return data;
@@ -284,7 +284,13 @@ function ReviewRow({
   taskTitle,
   onDecide,
 }: {
-  deliverable: { id: string; task_id: string; link: string; review_notes: string | null };
+  deliverable: {
+    id: string;
+    task_id: string;
+    link: string | null;
+    note: string | null;
+    review_notes: string | null;
+  };
   taskTitle: string;
   onDecide: (approve: boolean, notes: string) => void;
 }) {
@@ -292,9 +298,18 @@ function ReviewRow({
   return (
     <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
       <span className="w-40 shrink-0 truncate font-medium">{taskTitle}</span>
-      <a href={deliverable.link} target="_blank" rel="noreferrer" className="flex-1 truncate text-[var(--color-accent)]">
-        {deliverable.link}
-      </a>
+      <div className="flex-1 truncate">
+        {deliverable.link && (
+          <a href={deliverable.link} target="_blank" rel="noreferrer" className="text-[var(--color-accent)]">
+            {deliverable.link}
+          </a>
+        )}
+        {deliverable.note && (
+          <p className={deliverable.link ? "text-xs text-[var(--color-text-muted)]" : ""}>
+            {deliverable.note}
+          </p>
+        )}
+      </div>
       <input
         type="text"
         placeholder="Notes (required to return)"

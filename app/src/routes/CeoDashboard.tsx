@@ -6,6 +6,7 @@ import { ExportButton } from "@/components/shell/ExportButton";
 import { HistoricalProjects } from "@/components/shell/HistoricalProjects";
 import { ActivityLog } from "@/components/shell/ActivityLog";
 import { AssignTaskSection } from "@/components/shell/AssignTaskSection";
+import { CreateProjectSection } from "@/components/shell/CreateProjectSection";
 import { syncTaskToCalendar } from "@/lib/calendarSync";
 import type { CapabilityFlag, TaskStatus } from "@/lib/database.types";
 
@@ -19,6 +20,7 @@ const ALL_FLAGS: CapabilityFlag[] = [
   "can_approve_founder_hours",
   "can_export_financial_data",
   "can_export_task_data",
+  "can_create_projects",
   "is_admin_ceo",
   "is_admin_cto",
   "is_admin_cfo",
@@ -52,7 +54,7 @@ export default function CeoDashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tasks")
-        .select("id, project_id, assigned_to, status, estimated_hours, deadline");
+        .select("id, title, project_id, assigned_to, status, estimated_hours, deadline");
       if (error) throw error;
       return data;
     },
@@ -72,7 +74,7 @@ export default function CeoDashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("deliverables")
-        .select("id, task_id, link, review_status, review_notes")
+        .select("id, task_id, link, note, review_status, review_notes")
         .eq("review_status", "approved");
       if (error) throw error;
       return data;
@@ -88,9 +90,9 @@ export default function CeoDashboard() {
     },
   });
 
-  const projectsById = useMemo(
-    () => new Map((projectsQuery.data ?? []).map((p) => [p.id, p.name])),
-    [projectsQuery.data]
+  const taskTitleById = useMemo(
+    () => new Map((tasksQuery.data ?? []).map((t) => [t.id, t.title])),
+    [tasksQuery.data]
   );
   const capacityByUser = useMemo(() => {
     const map = new Map<string, { assigned: number; logged: number }>();
@@ -107,25 +109,6 @@ export default function CeoDashboard() {
     }
     return map;
   }, [tasksQuery.data, timeLogsQuery.data]);
-
-  const createProject = useMutation({
-    mutationFn: async (input: { name: string; clientName: string; contractValue: number }) => {
-      const { error } = await supabase.from("projects").insert({
-        name: input.name,
-        client_name: input.clientName,
-        contract_value: input.contractValue,
-        status: "active",
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      // Every dashboard's project dropdown shares this query key, so this
-      // single invalidate refreshes the "Assign a task" picker immediately.
-      queryClient.invalidateQueries({ queryKey: ["projects-active"] });
-      queryClient.invalidateQueries({ queryKey: ["projects-all"] });
-      queryClient.invalidateQueries({ queryKey: ["historical-projects"] });
-    },
-  });
 
   // Archiving (never deleting) is the only "removal" path per the
   // never-hard-delete rule — an archived project stays fully queryable
@@ -232,11 +215,12 @@ export default function CeoDashboard() {
 
   return (
     <div className="flex flex-col gap-8">
-      <section>
-        <h1 className="mb-3 text-lg font-semibold">New project</h1>
-        <NewProjectForm onCreate={(input) => createProject.mutate(input)} />
-        {(projectsQuery.data?.length ?? 0) > 0 && (
-          <ul className="mt-3 flex flex-col gap-1 text-sm">
+      <CreateProjectSection />
+
+      {(projectsQuery.data?.length ?? 0) > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-semibold">Active projects</h2>
+          <ul className="flex flex-col gap-1 text-sm">
             {(projectsQuery.data ?? []).map((p) => (
               <li
                 key={p.id}
@@ -256,8 +240,8 @@ export default function CeoDashboard() {
               </li>
             ))}
           </ul>
-        )}
-      </section>
+        </section>
+      )}
 
       <AssignTaskSection />
 
@@ -307,7 +291,7 @@ export default function CeoDashboard() {
             <SignoffRow
               key={d.id}
               deliverable={d}
-              projectName={projectsById.get(d.task_id)}
+              taskTitle={taskTitleById.get(d.task_id) ?? d.task_id.slice(0, 8)}
               onDecide={(approve, notes) =>
                 signoffDecision.mutate({ deliverableId: d.id, taskId: d.task_id, approve, notes })
               }
@@ -367,73 +351,32 @@ export default function CeoDashboard() {
   );
 }
 
-function NewProjectForm({
-  onCreate,
-}: {
-  onCreate: (input: { name: string; clientName: string; contractValue: number }) => void;
-}) {
-  const [name, setName] = useState("");
-  const [clientName, setClientName] = useState("");
-  const [contractValue, setContractValue] = useState("");
-
-  function submit() {
-    if (!name || !clientName) return;
-    onCreate({ name, clientName, contractValue: Number(contractValue || 0) });
-    setName("");
-    setClientName("");
-    setContractValue("");
-  }
-
-  return (
-    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-      <Field label="Project name">
-        <input value={name} onChange={(e) => setName(e.target.value)} className="input" placeholder="e.g. Acme Website Revamp" />
-      </Field>
-      <Field label="Client">
-        <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input" placeholder="e.g. Acme Corp" />
-      </Field>
-      <Field label="Contract value">
-        <input
-          type="number"
-          min="0"
-          value={contractValue}
-          onChange={(e) => setContractValue(e.target.value)}
-          className="input w-32"
-          placeholder="0"
-        />
-      </Field>
-      <button onClick={submit} className="rounded bg-[var(--color-accent)] px-4 py-1.5 text-sm text-[var(--color-accent-fg)]">
-        Create project
-      </button>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
-      {label}
-      {children}
-    </label>
-  );
-}
 
 function SignoffRow({
   deliverable,
-  projectName,
+  taskTitle,
   onDecide,
 }: {
-  deliverable: { id: string; task_id: string; link: string };
-  projectName?: string;
+  deliverable: { id: string; task_id: string; link: string | null; note: string | null };
+  taskTitle: string;
   onDecide: (approve: boolean, notes: string) => void;
 }) {
   const [notes, setNotes] = useState("");
   return (
     <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
-      <span className="w-32 truncate text-[var(--color-text-muted)]">{projectName ?? deliverable.task_id.slice(0, 8)}</span>
-      <a href={deliverable.link} target="_blank" rel="noreferrer" className="flex-1 truncate text-[var(--color-accent)]">
-        {deliverable.link}
-      </a>
+      <span className="w-32 shrink-0 truncate font-medium">{taskTitle}</span>
+      <div className="flex-1 truncate">
+        {deliverable.link && (
+          <a href={deliverable.link} target="_blank" rel="noreferrer" className="text-[var(--color-accent)]">
+            {deliverable.link}
+          </a>
+        )}
+        {deliverable.note && (
+          <p className={deliverable.link ? "text-xs text-[var(--color-text-muted)]" : ""}>
+            {deliverable.note}
+          </p>
+        )}
+      </div>
       <input
         type="text"
         placeholder="Note (required to kick back)"

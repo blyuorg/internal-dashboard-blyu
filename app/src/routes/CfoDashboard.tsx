@@ -6,12 +6,14 @@ import { ExportButton } from "@/components/shell/ExportButton";
 import { HistoricalProjects } from "@/components/shell/HistoricalProjects";
 import { ActivityLog } from "@/components/shell/ActivityLog";
 import { AssignTaskSection } from "@/components/shell/AssignTaskSection";
+import { CreateProjectSection } from "@/components/shell/CreateProjectSection";
 
 export default function CfoDashboard() {
   const { session } = useAuth();
   const userId = session?.user.id;
   const queryClient = useQueryClient();
   const canAssignTasks = useHasFlag("can_assign_tasks");
+  const canCreateProjects = useHasFlag("can_create_projects");
 
   const projectsQuery = useQuery({
     queryKey: ["projects-active"],
@@ -178,6 +180,7 @@ export default function CfoDashboard() {
         <StatTile label={`Reserve (${(reservePct * 100).toFixed(0)}%)`} value={totalReserve} />
       </section>
 
+      {canCreateProjects && <CreateProjectSection />}
       {canAssignTasks && <AssignTaskSection />}
 
       <section>

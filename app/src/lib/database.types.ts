@@ -13,6 +13,7 @@ export type CapabilityFlag =
   | "can_approve_founder_hours"
   | "can_export_financial_data"
   | "can_export_task_data"
+  | "can_create_projects"
   | "is_admin_ceo"
   | "is_admin_cto"
   | "is_admin_cfo";
@@ -79,7 +80,8 @@ export type FounderApprovalStatus = "pending" | "approved" | "rejected";
 export type DeliverablesRow = {
   id: string;
   task_id: string;
-  link: string;
+  link: string | null;
+  note: string | null;
   review_status: ReviewStatus;
   reviewed_by: string | null;
   review_notes: string | null;

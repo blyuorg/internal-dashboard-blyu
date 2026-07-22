@@ -5,6 +5,7 @@ import { useAuth, useHasFlag } from "@/lib/auth";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { MyHoursChart } from "@/components/timer/MyHoursChart";
 import { AssignTaskSection } from "@/components/shell/AssignTaskSection";
+import { CreateProjectSection } from "@/components/shell/CreateProjectSection";
 import { syncTaskToCalendar } from "@/lib/calendarSync";
 import type { TaskStatus } from "@/lib/database.types";
 
@@ -21,6 +22,7 @@ export default function TeamDashboard() {
   const userId = session?.user.id;
   const queryClient = useQueryClient();
   const canAssignTasks = useHasFlag("can_assign_tasks");
+  const canCreateProjects = useHasFlag("can_create_projects");
 
   const tasksQuery = useQuery({
     queryKey: ["my-tasks", userId],
@@ -45,27 +47,16 @@ export default function TeamDashboard() {
     },
   });
 
-  const earningsQuery = useQuery({
-    queryKey: ["my-earnings", userId],
-    enabled: !!userId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("payout_run_lines")
-        .select("id, hours, quality_factor, points, amount_paid")
-        .eq("user_id", userId!);
-      if (error) throw error;
-      return data;
-    },
-  });
-
   const submitForReview = useMutation({
-    mutationFn: async ({ taskId, link }: { taskId: string; link: string }) => {
+    mutationFn: async ({ taskId, link, note }: { taskId: string; link: string; note: string }) => {
       const { error: taskErr } = await supabase
         .from("tasks")
-        .update({ status: "in_review", deliverable_link: link })
+        .update({ status: "in_review", deliverable_link: link || null })
         .eq("id", taskId);
       if (taskErr) throw taskErr;
-      const { error: delErr } = await supabase.from("deliverables").insert({ task_id: taskId, link });
+      const { error: delErr } = await supabase
+        .from("deliverables")
+        .insert({ task_id: taskId, link: link || null, note: note || null });
       if (delErr) throw delErr;
       return taskId;
     },
@@ -75,10 +66,9 @@ export default function TeamDashboard() {
     },
   });
 
-  const totalPaid = (earningsQuery.data ?? []).reduce((sum, l) => sum + Number(l.amount_paid), 0);
-
   return (
     <div className="flex flex-col gap-6">
+      {canCreateProjects && <CreateProjectSection />}
       {canAssignTasks && <AssignTaskSection />}
 
       <section>
@@ -100,7 +90,7 @@ export default function TeamDashboard() {
                 <TaskRow
                   key={task.id}
                   task={task}
-                  onSubmit={(link) => submitForReview.mutate({ taskId: task.id, link })}
+                  onSubmit={(link, note) => submitForReview.mutate({ taskId: task.id, link, note })}
                 />
               ))}
               {tasksQuery.data?.length === 0 && (
@@ -114,14 +104,6 @@ export default function TeamDashboard() {
           </table>
         </div>
       </section>
-
-      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <h2 className="mb-2 text-sm font-semibold text-[var(--color-text-muted)]">My earnings</h2>
-        <p className="text-2xl font-semibold">₹{totalPaid.toLocaleString("en-IN")}</p>
-        <p className="text-xs text-[var(--color-text-muted)]">
-          Across {earningsQuery.data?.length ?? 0} payout line(s)
-        </p>
-      </div>
 
       <MyHoursChart />
 
@@ -175,9 +157,12 @@ function TaskRow({
     deliverable_link: string | null;
     projects: { name: string } | null;
   };
-  onSubmit: (link: string) => void;
+  onSubmit: (link: string, note: string) => void;
 }) {
   const [link, setLink] = useState(task.deliverable_link ?? "");
+  const [note, setNote] = useState("");
+
+  const canSubmit = link.trim().length > 0 || note.trim().length > 0;
 
   return (
     <tr className="border-t border-[var(--color-border)]">
@@ -187,17 +172,26 @@ function TaskRow({
       <td className="px-3 py-2">{task.deadline ? new Date(task.deadline).toLocaleDateString() : "—"}</td>
       <td className="px-3 py-2">{task.estimated_hours ?? "—"}</td>
       <td className="px-3 py-2">
-        <div className="flex gap-1">
+        <div className="flex flex-col gap-1">
           <input
             type="text"
             value={link}
             onChange={(e) => setLink(e.target.value)}
-            className="w-32 rounded border border-[var(--color-border)] bg-transparent px-1.5 py-1 text-xs"
-            placeholder="deliverable link"
+            className="w-40 rounded border border-[var(--color-border)] bg-transparent px-1.5 py-1 text-xs"
+            placeholder="deliverable link (optional)"
+          />
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className="w-40 rounded border border-[var(--color-border)] bg-transparent px-1.5 py-1 text-xs"
+            placeholder="note (optional)"
           />
           <button
-            onClick={() => link && onSubmit(link)}
-            className="rounded border border-[var(--color-border)] px-2 py-1 text-xs"
+            onClick={() => canSubmit && onSubmit(link.trim(), note.trim())}
+            disabled={!canSubmit}
+            title={canSubmit ? undefined : "A link or a note is required"}
+            className="rounded border border-[var(--color-border)] px-2 py-1 text-xs disabled:opacity-40"
           >
             Submit
           </button>
