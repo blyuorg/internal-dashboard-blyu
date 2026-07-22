@@ -14,11 +14,13 @@ export type CapabilityFlag =
   | "can_export_financial_data"
   | "can_export_task_data"
   | "can_create_projects"
+  | "can_view_tasks"
+  | "can_edit_tasks"
   | "is_admin_ceo"
   | "is_admin_cto"
   | "is_admin_cfo";
 
-export type TaskStatus = "todo" | "in_progress" | "in_review" | "blocked" | "done";
+export type TaskStatus = "todo" | "in_progress" | "in_review" | "blocked" | "done" | "cancelled";
 export type ProjectStatus = "active" | "archived";
 
 export type UsersRow = {

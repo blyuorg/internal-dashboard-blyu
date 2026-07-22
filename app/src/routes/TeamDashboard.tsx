@@ -6,6 +6,7 @@ import { ChatPanel } from "@/components/chat/ChatPanel";
 import { MyHoursChart } from "@/components/timer/MyHoursChart";
 import { AssignTaskSection } from "@/components/shell/AssignTaskSection";
 import { CreateProjectSection } from "@/components/shell/CreateProjectSection";
+import { GlobalTaskTable } from "@/components/shell/GlobalTaskTable";
 import { syncTaskToCalendar } from "@/lib/calendarSync";
 import type { TaskStatus } from "@/lib/database.types";
 
@@ -15,6 +16,7 @@ const STATUS_STYLE: Record<TaskStatus, string> = {
   in_review: "text-[var(--color-warn)]",
   blocked: "text-[var(--color-critical)]",
   done: "text-[var(--color-good)]",
+  cancelled: "text-[var(--color-text-muted)] line-through",
 };
 
 export default function TeamDashboard() {
@@ -70,6 +72,7 @@ export default function TeamDashboard() {
     <div className="flex flex-col gap-6">
       {canCreateProjects && <CreateProjectSection />}
       {canAssignTasks && <AssignTaskSection />}
+      <GlobalTaskTable />
 
       <section>
         <h1 className="mb-3 text-lg font-semibold">My tasks</h1>

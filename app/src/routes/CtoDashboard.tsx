@@ -5,30 +5,12 @@ import { useAuth } from "@/lib/auth";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { HistoricalProjects } from "@/components/shell/HistoricalProjects";
 import { ActivityLog } from "@/components/shell/ActivityLog";
-import { syncTaskToCalendar } from "@/lib/calendarSync";
-import type { TaskStatus } from "@/lib/database.types";
-
-const STATUS_STYLE: Record<TaskStatus, string> = {
-  todo: "text-[var(--color-text-muted)]",
-  in_progress: "text-[var(--color-accent)]",
-  in_review: "text-[var(--color-warn)]",
-  blocked: "text-[var(--color-critical)]",
-  done: "text-[var(--color-good)]",
-};
+import { GlobalTaskTable } from "@/components/shell/GlobalTaskTable";
 
 export default function CtoDashboard() {
   const { session } = useAuth();
   const userId = session?.user.id;
   const queryClient = useQueryClient();
-
-  const usersQuery = useQuery({
-    queryKey: ["all-users"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("users").select("id, name");
-      if (error) throw error;
-      return data;
-    },
-  });
 
   const projectsQuery = useQuery({
     queryKey: ["projects-active"],
@@ -39,22 +21,10 @@ export default function CtoDashboard() {
     },
   });
 
-  const tasksQuery = useQuery({
-    queryKey: ["delivery-tasks"],
+  const taskTitlesQuery = useQuery({
+    queryKey: ["task-titles"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("tasks")
-        .select("id, title, project_id, assigned_to, status, estimated_hours, deadline")
-        .order("deadline", { ascending: true });
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const timeLogsQuery = useQuery({
-    queryKey: ["all-time-logs"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("time_logs").select("task_id, user_id, hours");
+      const { data, error } = await supabase.from("tasks").select("id, title");
       if (error) throw error;
       return data;
     },
@@ -85,37 +55,10 @@ export default function CtoDashboard() {
     },
   });
 
-  const usersById = useMemo(
-    () => new Map((usersQuery.data ?? []).map((u) => [u.id, u.name])),
-    [usersQuery.data]
-  );
-  const projectsById = useMemo(
-    () => new Map((projectsQuery.data ?? []).map((p) => [p.id, p.name])),
-    [projectsQuery.data]
-  );
   const taskTitleById = useMemo(
-    () => new Map((tasksQuery.data ?? []).map((t) => [t.id, t.title])),
-    [tasksQuery.data]
+    () => new Map((taskTitlesQuery.data ?? []).map((t) => [t.id, t.title])),
+    [taskTitlesQuery.data]
   );
-  const actualHoursByTask = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const log of timeLogsQuery.data ?? []) {
-      map.set(log.task_id, (map.get(log.task_id) ?? 0) + Number(log.hours));
-    }
-    return map;
-  }, [timeLogsQuery.data]);
-
-  const reassign = useMutation({
-    mutationFn: async ({ taskId, assignedTo }: { taskId: string; assignedTo: string }) => {
-      const { error } = await supabase.from("tasks").update({ assigned_to: assignedTo }).eq("id", taskId);
-      if (error) throw error;
-      return taskId;
-    },
-    onSuccess: (taskId) => {
-      queryClient.invalidateQueries({ queryKey: ["delivery-tasks"] });
-      syncTaskToCalendar(taskId);
-    },
-  });
 
   const reviewDecision = useMutation({
     mutationFn: async ({
@@ -158,10 +101,9 @@ export default function CtoDashboard() {
       }
       return taskId;
     },
-    onSuccess: (taskId) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pending-deliverables"] });
-      queryClient.invalidateQueries({ queryKey: ["delivery-tasks"] });
-      syncTaskToCalendar(taskId);
+      queryClient.invalidateQueries({ queryKey: ["global-tasks"] });
     },
   });
 
@@ -169,56 +111,7 @@ export default function CtoDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section>
-        <h1 className="mb-3 text-lg font-semibold">Delivery pipeline</h1>
-        <div className="overflow-hidden rounded-lg border border-[var(--color-border)]">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-[var(--color-surface)] text-[var(--color-text-muted)]">
-              <tr>
-                <th className="px-3 py-2">Task</th>
-                <th className="px-3 py-2">Project</th>
-                <th className="px-3 py-2">Assignee</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Estimate vs actual</th>
-                <th className="px-3 py-2">Deadline</th>
-                <th className="px-3 py-2">Reassign</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(tasksQuery.data ?? []).map((task) => (
-                <tr key={task.id} className="border-t border-[var(--color-border)]">
-                  <td className="px-3 py-2">{task.title}</td>
-                  <td className="px-3 py-2">{projectsById.get(task.project_id) ?? "—"}</td>
-                  <td className="px-3 py-2">{usersById.get(task.assigned_to ?? "") ?? "Unassigned"}</td>
-                  <td className={`px-3 py-2 font-medium ${STATUS_STYLE[task.status]}`}>{task.status}</td>
-                  <td className="px-3 py-2">
-                    {task.estimated_hours ?? "—"} / {actualHoursByTask.get(task.id) ?? 0}
-                  </td>
-                  <td className="px-3 py-2">
-                    {task.deadline ? new Date(task.deadline).toLocaleDateString() : "—"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <select
-                      defaultValue=""
-                      onChange={(e) => {
-                        if (e.target.value) reassign.mutate({ taskId: task.id, assignedTo: e.target.value });
-                      }}
-                      className="rounded border border-[var(--color-border)] bg-transparent px-1.5 py-1 text-xs"
-                    >
-                      <option value="">Reassign…</option>
-                      {(usersQuery.data ?? []).map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <GlobalTaskTable />
 
       <section>
         <h2 className="mb-3 text-lg font-semibold">Technical review gate</h2>

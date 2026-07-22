@@ -7,6 +7,7 @@ import { HistoricalProjects } from "@/components/shell/HistoricalProjects";
 import { ActivityLog } from "@/components/shell/ActivityLog";
 import { AssignTaskSection } from "@/components/shell/AssignTaskSection";
 import { CreateProjectSection } from "@/components/shell/CreateProjectSection";
+import { GlobalTaskTable } from "@/components/shell/GlobalTaskTable";
 
 export default function CfoDashboard() {
   const { session } = useAuth();
@@ -182,6 +183,7 @@ export default function CfoDashboard() {
 
       {canCreateProjects && <CreateProjectSection />}
       {canAssignTasks && <AssignTaskSection />}
+      <GlobalTaskTable />
 
       <section>
         <div className="mb-3 flex items-center justify-between">
