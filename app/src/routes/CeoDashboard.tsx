@@ -26,6 +26,14 @@ const ALL_FLAGS: CapabilityFlag[] = [
   "is_admin_cfo",
 ];
 
+const STATUS_STYLE: Record<TaskStatus, string> = {
+  todo: "text-[var(--color-text-muted)]",
+  in_progress: "text-[var(--color-accent)]",
+  in_review: "text-[var(--color-warn)]",
+  blocked: "text-[var(--color-critical)]",
+  done: "text-[var(--color-good)]",
+};
+
 export default function CeoDashboard() {
   const { session } = useAuth();
   const userId = session?.user.id;
@@ -54,7 +62,19 @@ export default function CeoDashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tasks")
-        .select("id, title, project_id, assigned_to, status, estimated_hours, deadline");
+        .select("id, title, project_id, assigned_to, assigned_by, status, estimated_hours, deadline")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Includes archived projects too, so a task on a since-archived project
+  // still shows a real project name instead of blank.
+  const allProjectsQuery = useQuery({
+    queryKey: ["projects-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("projects").select("id, name");
       if (error) throw error;
       return data;
     },
@@ -93,6 +113,18 @@ export default function CeoDashboard() {
   const taskTitleById = useMemo(
     () => new Map((tasksQuery.data ?? []).map((t) => [t.id, t.title])),
     [tasksQuery.data]
+  );
+  const usersById = useMemo(
+    () => new Map((usersQuery.data ?? []).map((u) => [u.id, u.name])),
+    [usersQuery.data]
+  );
+  const allProjectsById = useMemo(
+    () => new Map((allProjectsQuery.data ?? []).map((p) => [p.id, p.name])),
+    [allProjectsQuery.data]
+  );
+  const myAssignedTasks = useMemo(
+    () => (tasksQuery.data ?? []).filter((t) => t.assigned_by === userId),
+    [tasksQuery.data, userId]
   );
   const capacityByUser = useMemo(() => {
     const map = new Map<string, { assigned: number; logged: number }>();
@@ -244,6 +276,59 @@ export default function CeoDashboard() {
       )}
 
       <AssignTaskSection />
+
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Tasks I've assigned</h2>
+          <ExportButton
+            requiresFlag="can_export_task_data"
+            filename="tasks-i-assigned"
+            rows={() =>
+              myAssignedTasks.map((t) => ({
+                Task: t.title,
+                Project: allProjectsById.get(t.project_id) ?? "—",
+                Assignee: usersById.get(t.assigned_to ?? "") ?? "Unassigned",
+                Status: t.status,
+                "Est. hours": t.estimated_hours ?? "",
+                Deadline: t.deadline ?? "",
+              }))
+            }
+          />
+        </div>
+        <div className="overflow-hidden rounded-lg border border-[var(--color-border)]">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[var(--color-surface)] text-[var(--color-text-muted)]">
+              <tr>
+                <th className="px-3 py-2">Task</th>
+                <th className="px-3 py-2">Project</th>
+                <th className="px-3 py-2">Assignee</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Deadline</th>
+              </tr>
+            </thead>
+            <tbody>
+              {myAssignedTasks.map((t) => (
+                <tr key={t.id} className="border-t border-[var(--color-border)]">
+                  <td className="px-3 py-2 font-medium">{t.title}</td>
+                  <td className="px-3 py-2">{allProjectsById.get(t.project_id) ?? "—"}</td>
+                  <td className="px-3 py-2">{usersById.get(t.assigned_to ?? "") ?? "Unassigned"}</td>
+                  <td className={`px-3 py-2 font-medium ${STATUS_STYLE[t.status]}`}>{t.status}</td>
+                  <td className="px-3 py-2">
+                    {t.deadline ? new Date(t.deadline).toLocaleDateString() : "—"}
+                  </td>
+                </tr>
+              ))}
+              {myAssignedTasks.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-3 py-4 text-center text-[var(--color-text-muted)]">
+                    You haven't assigned any tasks yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section>
         <div className="mb-3 flex items-center justify-between">
