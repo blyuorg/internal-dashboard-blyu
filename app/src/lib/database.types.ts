@@ -59,6 +59,7 @@ export type ProjectsRow = {
 
 export type TasksRow = {
   id: string;
+  title: string;
   project_id: string;
   assigned_to: string | null;
   assigned_by: string | null;

@@ -28,12 +28,13 @@ export default function TeamDashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tasks")
-        .select("id, status, deadline, estimated_hours, deliverable_link, project_id, projects(name)")
+        .select("id, title, status, deadline, estimated_hours, deliverable_link, project_id, projects(name)")
         .eq("assigned_to", userId!)
         .order("deadline", { ascending: true });
       if (error) throw error;
       return data as unknown as Array<{
         id: string;
+        title: string;
         status: TaskStatus;
         deadline: string | null;
         estimated_hours: number | null;
@@ -86,6 +87,7 @@ export default function TeamDashboard() {
           <table className="w-full text-left text-sm">
             <thead className="bg-[var(--color-surface)] text-[var(--color-text-muted)]">
               <tr>
+                <th className="px-3 py-2">Task</th>
                 <th className="px-3 py-2">Project</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Deadline</th>
@@ -103,7 +105,7 @@ export default function TeamDashboard() {
               ))}
               {tasksQuery.data?.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-center text-[var(--color-text-muted)]">
+                  <td colSpan={6} className="px-3 py-4 text-center text-[var(--color-text-muted)]">
                     No tasks assigned yet.
                   </td>
                 </tr>
@@ -166,6 +168,7 @@ function TaskRow({
 }: {
   task: {
     id: string;
+    title: string;
     status: TaskStatus;
     deadline: string | null;
     estimated_hours: number | null;
@@ -178,6 +181,7 @@ function TaskRow({
 
   return (
     <tr className="border-t border-[var(--color-border)]">
+      <td className="px-3 py-2 font-medium">{task.title}</td>
       <td className="px-3 py-2">{task.projects?.name ?? "—"}</td>
       <td className={`px-3 py-2 font-medium ${STATUS_STYLE[task.status]}`}>{task.status}</td>
       <td className="px-3 py-2">{task.deadline ? new Date(task.deadline).toLocaleDateString() : "—"}</td>

@@ -35,6 +35,7 @@ export function AssignTaskSection() {
 
   const assignTask = useMutation({
     mutationFn: async (input: {
+      title: string;
       projectId: string;
       assignedTo: string;
       roleTag: string;
@@ -45,6 +46,7 @@ export function AssignTaskSection() {
       const { data, error } = await supabase
         .from("tasks")
         .insert({
+          title: input.title,
           project_id: input.projectId,
           assigned_to: input.assignedTo,
           assigned_by: userId,
@@ -90,6 +92,7 @@ function TaskAssignForm({
   projects: { id: string; name: string }[];
   users: { id: string; name: string }[];
   onAssign: (input: {
+    title: string;
     projectId: string;
     assignedTo: string;
     roleTag: string;
@@ -98,6 +101,7 @@ function TaskAssignForm({
     deliverableLink: string;
   }) => void;
 }) {
+  const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const [roleTag, setRoleTag] = useState("");
@@ -106,8 +110,9 @@ function TaskAssignForm({
   const [deliverableLink, setDeliverableLink] = useState("");
 
   function submit() {
-    if (!projectId || !assignedTo || !estimatedHours) return;
+    if (!title || !projectId || !assignedTo || !estimatedHours) return;
     onAssign({
+      title,
       projectId,
       assignedTo,
       roleTag,
@@ -115,6 +120,7 @@ function TaskAssignForm({
       deadline,
       deliverableLink,
     });
+    setTitle("");
     setRoleTag("");
     setEstimatedHours("");
     setDeadline("");
@@ -123,6 +129,9 @@ function TaskAssignForm({
 
   return (
     <div className="flex flex-wrap items-end gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <Field label="Task name">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} className="input" placeholder="e.g. Homepage redesign" />
+      </Field>
       <Field label="Project">
         <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="input">
           <option value="">Select…</option>

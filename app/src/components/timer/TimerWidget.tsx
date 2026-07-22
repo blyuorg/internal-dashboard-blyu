@@ -48,11 +48,11 @@ export function TimerWidget() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tasks")
-        .select("id, project_id, status, projects(name)")
+        .select("id, title, project_id, status, projects(name)")
         .eq("assigned_to", userId!)
         .neq("status", "done");
       if (error) throw error;
-      return data as unknown as { id: string; projects: { name: string } | null }[];
+      return data as unknown as { id: string; title: string; projects: { name: string } | null }[];
     },
   });
 
@@ -204,7 +204,7 @@ export function TimerWidget() {
               <option value="">Select task…</option>
               {taskOptions.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.projects?.name ?? t.id.slice(0, 8)}
+                  {t.title} — {t.projects?.name ?? "no project"}
                 </option>
               ))}
             </select>

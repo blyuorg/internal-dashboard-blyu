@@ -49,9 +49,9 @@ export function ActivityLog() {
   const tasksQuery = useQuery({
     queryKey: ["all-tasks-for-activity"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("tasks").select("id, project_id, projects(name)");
+      const { data, error } = await supabase.from("tasks").select("id, title, project_id, projects(name)");
       if (error) throw error;
-      return data as unknown as { id: string; projects: { name: string } | null }[];
+      return data as unknown as { id: string; title: string; projects: { name: string } | null }[];
     },
   });
 
@@ -59,8 +59,12 @@ export function ActivityLog() {
     () => new Map((usersQuery.data ?? []).map((u) => [u.id, u.name])),
     [usersQuery.data]
   );
-  const tasksById = useMemo(
-    () => new Map((tasksQuery.data ?? []).map((t) => [t.id, t.projects?.name ?? t.id.slice(0, 8)])),
+  const taskTitleById = useMemo(
+    () => new Map((tasksQuery.data ?? []).map((t) => [t.id, t.title])),
+    [tasksQuery.data]
+  );
+  const taskProjectById = useMemo(
+    () => new Map((tasksQuery.data ?? []).map((t) => [t.id, t.projects?.name ?? "—"])),
     [tasksQuery.data]
   );
 
@@ -84,6 +88,7 @@ export function ActivityLog() {
               <th className="px-3 py-2">Person</th>
               <th className="px-3 py-2">Pool</th>
               <th className="px-3 py-2">Task</th>
+              <th className="px-3 py-2">Project</th>
               <th className="px-3 py-2">Started</th>
               <th className="px-3 py-2">Duration</th>
               <th className="px-3 py-2">Status</th>
@@ -94,7 +99,8 @@ export function ActivityLog() {
               <tr key={s.id} className="border-t border-[var(--color-border)]">
                 <td className="px-3 py-2">{usersById.get(s.user_id) ?? "—"}</td>
                 <td className="px-3 py-2">{s.pool_tag}</td>
-                <td className="px-3 py-2">{tasksById.get(s.task_id) ?? "—"}</td>
+                <td className="px-3 py-2">{taskTitleById.get(s.task_id) ?? "—"}</td>
+                <td className="px-3 py-2">{taskProjectById.get(s.task_id) ?? "—"}</td>
                 <td className="px-3 py-2">{new Date(s.started_at).toLocaleTimeString()}</td>
                 <td className="px-3 py-2">{durationLabel(s.started_at, s.ended_at, s.last_checkin_at)}</td>
                 <td className={`px-3 py-2 font-medium ${STATUS_STYLE[s.status]}`}>{s.status}</td>
@@ -102,7 +108,7 @@ export function ActivityLog() {
             ))}
             {sessionsQuery.data?.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-4 text-center text-[var(--color-text-muted)]">
+                <td colSpan={7} className="px-3 py-4 text-center text-[var(--color-text-muted)]">
                   No sessions logged this day.
                 </td>
               </tr>

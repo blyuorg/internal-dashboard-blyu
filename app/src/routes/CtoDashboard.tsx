@@ -44,7 +44,7 @@ export default function CtoDashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tasks")
-        .select("id, project_id, assigned_to, status, estimated_hours, deadline")
+        .select("id, title, project_id, assigned_to, status, estimated_hours, deadline")
         .order("deadline", { ascending: true });
       if (error) throw error;
       return data;
@@ -92,6 +92,10 @@ export default function CtoDashboard() {
   const projectsById = useMemo(
     () => new Map((projectsQuery.data ?? []).map((p) => [p.id, p.name])),
     [projectsQuery.data]
+  );
+  const taskTitleById = useMemo(
+    () => new Map((tasksQuery.data ?? []).map((t) => [t.id, t.title])),
+    [tasksQuery.data]
   );
   const actualHoursByTask = useMemo(() => {
     const map = new Map<string, number>();
@@ -171,6 +175,7 @@ export default function CtoDashboard() {
           <table className="w-full text-left text-sm">
             <thead className="bg-[var(--color-surface)] text-[var(--color-text-muted)]">
               <tr>
+                <th className="px-3 py-2">Task</th>
                 <th className="px-3 py-2">Project</th>
                 <th className="px-3 py-2">Assignee</th>
                 <th className="px-3 py-2">Status</th>
@@ -182,6 +187,7 @@ export default function CtoDashboard() {
             <tbody>
               {(tasksQuery.data ?? []).map((task) => (
                 <tr key={task.id} className="border-t border-[var(--color-border)]">
+                  <td className="px-3 py-2">{task.title}</td>
                   <td className="px-3 py-2">{projectsById.get(task.project_id) ?? "—"}</td>
                   <td className="px-3 py-2">{usersById.get(task.assigned_to ?? "") ?? "Unassigned"}</td>
                   <td className={`px-3 py-2 font-medium ${STATUS_STYLE[task.status]}`}>{task.status}</td>
@@ -221,6 +227,7 @@ export default function CtoDashboard() {
             <ReviewRow
               key={d.id}
               deliverable={d}
+              taskTitle={taskTitleById.get(d.task_id) ?? d.task_id.slice(0, 8)}
               onDecide={(approve, notes) =>
                 reviewDecision.mutate({ deliverableId: d.id, taskId: d.task_id, approve, notes })
               }
@@ -274,14 +281,17 @@ function ProjectChat({ projects }: { projects: { id: string; name: string }[] })
 
 function ReviewRow({
   deliverable,
+  taskTitle,
   onDecide,
 }: {
   deliverable: { id: string; task_id: string; link: string; review_notes: string | null };
+  taskTitle: string;
   onDecide: (approve: boolean, notes: string) => void;
 }) {
   const [notes, setNotes] = useState("");
   return (
     <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
+      <span className="w-40 shrink-0 truncate font-medium">{taskTitle}</span>
       <a href={deliverable.link} target="_blank" rel="noreferrer" className="flex-1 truncate text-[var(--color-accent)]">
         {deliverable.link}
       </a>

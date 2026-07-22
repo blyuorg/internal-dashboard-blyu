@@ -44,9 +44,9 @@ export function DayDetailPanel({ date, onClose }: { date: string; onClose: () =>
   const tasksQuery = useQuery({
     queryKey: ["my-tasks-for-day-detail"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("tasks").select("id, projects(name)");
+      const { data, error } = await supabase.from("tasks").select("id, title, projects(name)");
       if (error) throw error;
-      return data as unknown as { id: string; projects: { name: string } | null }[];
+      return data as unknown as { id: string; title: string; projects: { name: string } | null }[];
     },
   });
 
@@ -65,7 +65,13 @@ export function DayDetailPanel({ date, onClose }: { date: string; onClose: () =>
   });
 
   const tasksById = useMemo(
-    () => new Map((tasksQuery.data ?? []).map((t) => [t.id, t.projects?.name ?? t.id.slice(0, 8)])),
+    () =>
+      new Map(
+        (tasksQuery.data ?? []).map((t) => [
+          t.id,
+          t.projects?.name ? `${t.title} — ${t.projects.name}` : t.title,
+        ])
+      ),
     [tasksQuery.data]
   );
 
